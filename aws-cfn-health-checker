@@ -22,9 +22,9 @@ import boto3
 
 
 LOG = logging.getLogger('aws-check-stacks')
-# LOG.setLevel(logging.DEBUG)
+LOG.setLevel(logging.INFO)
 LOG_HANDLER = logging.StreamHandler()
-LOG_HANDLER.setLevel(logging.DEBUG)
+LOG_HANDLER.setLevel(logging.INFO)
 LOG.addHandler(LOG_HANDLER)
 
 
