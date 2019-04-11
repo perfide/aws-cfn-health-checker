@@ -1,0 +1,172 @@
+#!/usr/bin/env python
+# -*- coding: UTF-8 -*-
+
+# Copyright:
+#   2019 P. H. <github.com/perfide>
+# License:
+#   GPLv2-only
+#   https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
+
+"""checks all AWS-Accounts for broken and drifted CloudFormation stacks"""
+
+# included
+import configparser
+import datetime
+import logging
+import os
+import sys
+
+# external
+import botocore
+import boto3
+
+
+LOG = logging.getLogger('aws-check-stacks')
+# LOG.setLevel(logging.DEBUG)
+LOG_HANDLER = logging.StreamHandler()
+LOG_HANDLER.setLevel(logging.DEBUG)
+LOG.addHandler(LOG_HANDLER)
+
+
+class AwsError(BaseException):
+    pass
+
+
+def for_all_aws_profiles(function, *args, **kwargs):
+    """call function(profile_name) for every profile
+    returns a list of lists of tubles: (profile_name, pipeline-name, token)"""
+    profile_dict = {}
+    config_path = os.path.expanduser('~/.aws/config')
+    profiles = configparser.ConfigParser()
+    profiles.read(config_path)
+
+    for profile_name in profiles:
+        if profile_name == 'DEFAULT':
+            LOG.info('ignoring {} profile'.format(profile_name))
+            continue
+
+        if not profile_name.startswith('profile '):
+            LOG.info('ignoring {}'.format(profile_name))
+            continue
+
+        profile_name = profile_name.split(' ', 1)[1]
+        result = function(profile_name, *args, **kwargs)
+        profile_dict[profile_name] = result
+    LOG.info('')
+    return profile_dict
+# end def for_all_aws_profiles
+
+
+def analyse_stack(aws_client, profile_name, stack, now, max_age,
+                  healthy_status, drift_check_status):
+    if stack['StackStatus'] == 'DELETE_COMPLETE':
+        LOG.debug('{} {}: deleted'.format(
+            profile_name, stack['StackName']))
+        return
+
+    if stack['StackStatus'] not in healthy_status:
+        LOG.error('{} {}: status={}'.format(
+            profile_name, stack['StackName'], stack['StackStatus']))
+
+    if stack['StackStatus'] in drift_check_status:
+        LOG.debug('{} {}: status=ok'.format(
+            profile_name, stack['StackName'], stack['StackStatus']))
+
+        if stack['DriftInformation']['StackDriftStatus'] == 'NOT_CHECKED':
+            LOG.info('{} {}: not checked yet, requesting now'.format(
+                profile_name, stack['StackName']))
+            aws_client.detect_stack_drift(StackName=stack['StackName'])
+            return
+
+    if 'LastCheckTimestamp' in stack['DriftInformation']:
+        updated = stack['DriftInformation']['LastCheckTimestamp']
+        age = now - updated
+        if age > max_age:
+            LOG.info('{} {}: drift outdated, refreshing'.format(
+                profile_name, stack['StackName']))
+            aws_client.detect_stack_drift(StackName=stack['StackName'])
+            return
+
+    if stack['DriftInformation']['StackDriftStatus'] == 'DRIFTED':
+        LOG.info('{} {}: drifted'.format(profile_name, stack['StackName']))
+    elif (stack['DriftInformation']['StackDriftStatus'] not in
+            ('IN_SYNC', 'NOT_CHECKED')):
+        LOG.debug('DriftInformation')
+        LOG.debug(stack['DriftInformation'])
+        LOG.debug('/DriftInformation')
+    return
+# end def analyse_stack
+
+
+def aws_check_stacks(profile_name, *args, **kwargs):
+    """
+    returns list of tuple: (profile_name, pipeline-name, token)"""
+    healthy_status = ('CREATE_COMPLETE', 'UPDATE_COMPLETE')
+    drift_check_status = ('CREATE_COMPLETE', 'UPDATE_COMPLETE',
+                          'UPDATE_ROLLBACK_COMPLETE', 'DELETE_FAILED')
+
+    max_age = datetime.timedelta(days=2)
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    aws_session = boto3.Session(
+        profile_name=profile_name, region_name='eu-west-1')
+    aws_client = aws_session.client('cloudformation')
+    try:
+        reply = aws_client.list_stacks()
+    except botocore.exceptions.ClientError as e:
+        if e.response['Error']['Code'] == 'AccessDenied':
+            LOG.error('{}: account access denied'.format(profile_name))
+            return 1
+        else:
+            LOG.error('{}: connection failed'.format(profile_name))
+            LOG.debug(f'e {e}')
+            LOG.debug(f'e.args {e.args}')
+            LOG.debug(f'e.operation_name {e.operation_name}')
+            LOG.debug(f'e.response {e.response}')
+            LOG.debug('ErrorCode: {}'.format(e.response['Error']['Code']))
+            raise
+    LOG.info(f'handling profile: {profile_name}')
+    for stack in reply['StackSummaries']:
+        analyse_stack(aws_client, profile_name, stack, now, max_age,
+                      healthy_status, drift_check_status)
+    return
+# end def aws_check_stacks
+
+
+def is_mfa_valid():
+    aws_session = boto3.Session(
+        profile_name='mfa', region_name='eu-west-1')
+    aws_client = aws_session.client('sts')
+    try:
+        aws_client.get_caller_identity()
+    except botocore.exceptions.ClientError as e:
+        # '''botocore.exceptions.ClientError: An error occurred \
+        # (ExpiredToken) when calling the GetCallerIdentity operation: The \
+        # security token included in the request is expired'''
+        if e.response['Error']['Code'] == 'ExpiredToken':
+            return False
+        raise
+    return True
+# end def is_mfa_valid
+
+
+def main():
+
+    if not is_mfa_valid():
+        LOG.error('AWS secuirty token expired')
+        return 1
+
+    # aws_check_stacks('<profile-name>')
+    for_all_aws_profiles(aws_check_stacks)
+    LOG.info('')
+    return 0
+# end def main
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        LOG.error('\ninterrupted by keyboard')
+
+# [EOF]
