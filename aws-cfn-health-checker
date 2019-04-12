@@ -68,7 +68,7 @@ def handle_drift(aws_client, profile_name, stack, now, max_age):
         return
 
     if stack['DriftInformation']['StackDriftStatus'] == 'NOT_CHECKED':
-        LOG.info('{} {}: not checked yet, requesting now'.format(
+        LOG.info('{} {}: drift not checked yet, requesting now'.format(
             profile_name, stack['StackName']))
         aws_client.detect_stack_drift(StackName=stack['StackName'])
         return
