@@ -78,7 +78,7 @@ def analyse_stack(aws_client, profile_name, stack, now, max_age,
             aws_client.detect_stack_drift(StackName=stack['StackName'])
             return
 
-    if 'DriftInformation' in stack:
+    if 'DriftInformation' not in stack:
         LOG.error('{} {}: missing drift-info in: {}'.format(
             profile_name, stack['StackName'], stack))
         return
