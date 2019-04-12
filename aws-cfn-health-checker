@@ -120,9 +120,12 @@ def aws_check_stacks(profile_name, *args, **kwargs):
     max_age = datetime.timedelta(days=2)
     now = datetime.datetime.now(datetime.timezone.utc)
 
+    LOG.debug(f'get session for: {profile_name}')
     aws_session = boto3.Session(
         profile_name=profile_name, region_name='eu-west-1')
+    LOG.debug(f'get cfn-client for: {profile_name}')
     aws_client = aws_session.client('cloudformation')
+    LOG.info(f'list stacks for: {profile_name}')
     try:
         reply = aws_client.list_stacks()
     except botocore.exceptions.ClientError as e:
@@ -137,10 +140,11 @@ def aws_check_stacks(profile_name, *args, **kwargs):
             LOG.debug(f'e.response {e.response}')
             LOG.debug('ErrorCode: {}'.format(e.response['Error']['Code']))
             raise
-    LOG.info(f'handling profile: {profile_name}')
+    LOG.debug(f'handling stacks for: {profile_name}')
     for stack in reply['StackSummaries']:
         analyse_stack(aws_client, profile_name, stack, now, max_age,
                       healthy_status, drift_check_status)
+    LOG.info('')
     return
 # end def aws_check_stacks
 
