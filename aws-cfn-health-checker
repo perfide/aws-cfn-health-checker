@@ -69,36 +69,7 @@ def analyse_stack(aws_client, profile_name, stack, now, max_age,
             profile_name, stack['StackName'], stack['StackStatus']))
 
     if stack['StackStatus'] in drift_check_status:
-        LOG.debug('{} {}: status={}'.format(
-            profile_name, stack['StackName'], stack['StackStatus']))
-
-        if stack['DriftInformation']['StackDriftStatus'] == 'NOT_CHECKED':
-            LOG.info('{} {}: not checked yet, requesting now'.format(
-                profile_name, stack['StackName']))
-            aws_client.detect_stack_drift(StackName=stack['StackName'])
-            return
-
-    if 'DriftInformation' not in stack:
-        LOG.error('{} {}: missing drift-info in: {}'.format(
-            profile_name, stack['StackName'], stack))
-        return
-
-    if 'LastCheckTimestamp' in stack['DriftInformation']:
-        updated = stack['DriftInformation']['LastCheckTimestamp']
-        age = now - updated
-        if age > max_age:
-            LOG.info('{} {}: drift outdated, refreshing'.format(
-                profile_name, stack['StackName']))
-            aws_client.detect_stack_drift(StackName=stack['StackName'])
-            return
-
-    if stack['DriftInformation']['StackDriftStatus'] == 'DRIFTED':
-        LOG.info('{} {}: drifted'.format(profile_name, stack['StackName']))
-    elif (stack['DriftInformation']['StackDriftStatus'] not in
-            ('IN_SYNC', 'NOT_CHECKED')):
-        LOG.debug('DriftInformation')
-        LOG.debug(stack['DriftInformation'])
-        LOG.debug('/DriftInformation')
+        handle_drift(aws_client, profile_name, stack, now, max_age)
     return
 # end def analyse_stack
 
