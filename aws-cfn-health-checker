@@ -162,6 +162,7 @@ def is_mfa_valid():
 
 
 def main():
+    LOG.debug('testing for valid mfa credentials')
     mfa_valid = is_mfa_valid()
     if mfa_valid > 1:
         LOG.error('Unable to connect to AWS')
@@ -170,6 +171,7 @@ def main():
         LOG.error('AWS secuirty token expired')
         return 1
 
+    LOG.debug('iterating through all accounts')
     # aws_check_stacks('<profile-name>')
     for_all_aws_profiles(aws_check_stacks)
     LOG.info('')
