@@ -69,7 +69,7 @@ def analyse_stack(aws_client, profile_name, stack, now, max_age,
             profile_name, stack['StackName'], stack['StackStatus']))
 
     if stack['StackStatus'] in drift_check_status:
-        LOG.debug('{} {}: status=ok'.format(
+        LOG.debug('{} {}: status={}'.format(
             profile_name, stack['StackName'], stack['StackStatus']))
 
         if stack['DriftInformation']['StackDriftStatus'] == 'NOT_CHECKED':
