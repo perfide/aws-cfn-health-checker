@@ -144,20 +144,29 @@ def is_mfa_valid():
     aws_client = aws_session.client('sts')
     try:
         aws_client.get_caller_identity()
+    except botocore.exceptions.EndpointConnectionError as e:
+        # '''botocore.exceptions.EndpointConnectionError: Could not connect \
+        # to the endpoint URL: "https://sts.amazonaws.com/"'''
+        if e.fmt == 'Could not connect to the endpoint URL: "{endpoint_url}"':
+            return 2
+        raise
     except botocore.exceptions.ClientError as e:
         # '''botocore.exceptions.ClientError: An error occurred \
         # (ExpiredToken) when calling the GetCallerIdentity operation: The \
         # security token included in the request is expired'''
         if e.response['Error']['Code'] == 'ExpiredToken':
-            return False
+            return 1
         raise
-    return True
+    return 0
 # end def is_mfa_valid
 
 
 def main():
-
-    if not is_mfa_valid():
+    mfa_valid = is_mfa_valid()
+    if mfa_valid > 1:
+        LOG.error('Unable to connect to AWS')
+        return mfa_valid
+    elif mfa_valid == 1:
         LOG.error('AWS secuirty token expired')
         return 1
 
